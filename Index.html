@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>GTH-TC v4.0.1 | Scaled Standard Model</title>
+    <style>
+        :root {
+            --bg-base: #020204;
+            --panel-bg: rgba(5, 10, 15, 0.70);
+            --cyan: #00ffcc;
+            --magenta: #ff00ff;
+            --gold: #ffaa00;
+            --text-dim: #8899aa;
+            --border-glow: 0 0 12px rgba(0, 255, 204, 0.25);
+            --danger: #ff3333;
+            --hot: #ff8800;
+        }
+
+        body {
+            margin: 0; overflow: hidden; background-color: var(--bg-base);
+            color: #fff; font-family: 'Courier New', Courier, monospace;
+            user-select: none; -webkit-user-select: none; touch-action: none;
+        }
+
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+
+        /* --- UI OVERLAY --- */
+        #ui-layer {
+            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+            pointer-events: none; z-index: 10; display: flex; flex-direction: column;
+        }
+
+        .header {
+            padding: 15px 20px; background: linear-gradient(to bottom, rgba(0,0,0,0.95), transparent);
+            border-bottom: 1px solid rgba(0, 255, 204, 0.2); pointer-events: auto;
+        }
+        .header h1 { margin: 0; font-size: clamp(16px, 4vw, 24px); color: var(--cyan); text-transform: uppercase; letter-spacing: 3px; text-shadow: 0 0 10px var(--cyan); }
+        .header .subtitle { font-size: 10px; color: var(--text-dim); margin-top: 5px; letter-spacing: 1px; }
+
+        /* --- COLLAPSIBLE PANELS (Glassmorphism) --- */
+        .panel {
+            position: absolute; background: var(--panel-bg); border: 1px solid rgba(0, 255, 204, 0.3);
+            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+            box-shadow: var(--border-glow); pointer-events: auto;
+            display: flex; flex-direction: column; transition: all 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+            border-radius: 8px; overflow: hidden;
+        }
+
+        .panel-header {
+            display: flex; justify-content: space-between; align-items: center; padding: 12px 15px;
+            background: rgba(0, 255, 204, 0.1); cursor: pointer; border-bottom: 1px solid rgba(0, 255, 204, 0.2);
+            font-weight: bold; text-transform: uppercase; color: #fff; font-size: 13px;
+        }
+        .toggle-icon { color: var(--cyan); font-weight: bold; font-size: 18px; transition: transform 0.3s ease; }
+        .panel.collapsed .toggle-icon { transform: rotate(-90deg); }
+        
+        .panel-content { padding: 15px; overflow-y: auto; transition: max-height 0.3s ease, padding 0.3s ease, opacity 0.3s ease; }
+        .panel.collapsed .panel-content { max-height: 0 !important; padding-top: 0; padding-bottom: 0; opacity: 0; overflow: hidden; border: none; }
+        .panel-content::-webkit-scrollbar { width: 4px; }
+        .panel-content::-webkit-scrollbar-thumb { background: var(--cyan); border-radius: 4px; }
+
+        /* --- BUTTONS & DATA --- */
+        .btn {
+            background: rgba(0, 20, 30, 0.6); border: 1px solid var(--cyan); color: var(--cyan);
+            padding: 8px 10px; margin-bottom: 5px; width: 100%; border-radius: 4px;
+            font-family: inherit; font-weight: bold; font-size: 11px; text-transform: uppercase;
+            cursor: pointer; transition: all 0.2s ease; text-align: left;
+        }
+        .btn:hover, .btn.active { background: var(--cyan); color: #000; box-shadow: 0 0 10px var(--cyan); }
+        
+        .category-label { font-size: 10px; color: var(--text-dim); margin: 10px 0 5px 0; border-bottom: 1px dashed rgba(255,255,255,0.1); padding-bottom: 3px; }
+        
+        .data-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 11px; }
+        .data-label { color: var(--text-dim); }
+        .data-value { color: var(--gold); font-weight: bold; text-align: right; max-width: 60%; }
+        .data-value.cyan { color: var(--cyan); }
+        .data-value.magenta { color: var(--magenta); }
+
+        .description { margin-top: 10px; font-size: 11px; line-height: 1.4; color: #bbb; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px; }
+        .math-block { background: rgba(0,0,0,0.5); border: 1px solid rgba(0,255,204,0.2); padding: 8px; margin-top: 10px; font-style: italic; color: var(--cyan); font-size: 11px; text-align: center; border-radius: 4px; }
+
+        /* --- SLIDERS --- */
+        .slider-container { display: flex; flex-direction: column; gap: 5px; margin-bottom: 15px;}
+        .slider-label { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-dim); font-weight: bold; }
+        .slider-value { color: var(--gold); }
+        .slider-value.critical { color: var(--danger); text-shadow: 0 0 5px var(--danger); animation: blink 1s infinite alternate; }
+        .slider-value.hot { color: var(--hot); text-shadow: 0 0 5px var(--hot); }
+
+        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; cursor: pointer; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; background: rgba(0, 255, 204, 0.2); border-radius: 2px; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: var(--magenta); margin-top: -6px; box-shadow: 0 0 8px var(--magenta); }
+        @keyframes blink { from { opacity: 1; } to { opacity: 0.5; } }
+
+        .footer { position: absolute; bottom: 10px; left: 0; width: 100%; text-align: center; font-size: 10px; color: var(--text-dim); pointer-events: none; text-shadow: 0px 0px 4px #000; }
+
+        /* ========================================= */
+        /* Z FOLD 7 & ONE UI 8 RESPONSIVE MATRIX     */
+        /* ========================================= */
+        .controls { left: 20px; top: 90px; width: 280px; }
+        .controls .panel-content { max-height: calc(100vh - 160px); }
+        .telemetry { right: 20px; top: 90px; width: 340px; }
+        .telemetry .panel-content { max-height: calc(100vh - 160px); }
+
+        @media (max-width: 500px) and (orientation: portrait) {
+            .controls { left: 10px; top: 80px; width: calc(100vw - 20px); }
+            .controls .panel-content { max-height: 35vh; }
+            .telemetry { left: 10px; top: auto; bottom: 40px; width: calc(100vw - 20px); }
+            .telemetry .panel-content { max-height: 35vh; }
+            .telemetry.auto-collapse .panel-content { max-height: 0 !important; padding-top: 0; padding-bottom: 0; opacity: 0; border: none; }
+            .telemetry.auto-collapse .toggle-icon { transform: rotate(-90deg); }
+        }
+
+        @media (max-height: 500px) and (orientation: landscape) {
+            .header { padding: 5px 20px; }
+            .controls { left: 10px; top: 55px; width: 220px; }
+            .controls .panel-content { max-height: calc(100vh - 90px); }
+            .telemetry { right: 10px; top: 55px; width: 280px; }
+            .telemetry .panel-content { max-height: calc(100vh - 90px); }
+        }
+
+        @media (min-width: 501px) and (max-width: 900px) and (orientation: portrait) {
+            .controls { left: 15px; top: 90px; width: 260px; }
+            .telemetry { right: 15px; top: 90px; width: 300px; }
+        }
+    </style>
+    <script type="importmap">
+        { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+    </script>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div id="ui-layer">
+        <div class="header">
+            <div>
+                <h1>GTH-TC | Topological Console</h1>
+                <div class="subtitle">GEOTEMPORAL HYDRODYNAMICS v4.0.1 | CALIBRATED MATH SCALE</div>
+            </div>
+        </div>
+
+        <!-- COMMAND DECK (EXPANDED) -->
+        <div class="panel controls" id="controls-panel">
+            <div class="panel-header" id="controls-header"><span><span style="color:var(--magenta)">///</span> COMMAND DECK</span><span class="toggle-icon">−</span></div>
+            <div class="panel-content">
+                <div class="category-label" style="margin-top:0;">LEPTONS (FERMIONS)</div>
+                <button class="btn active" data-target="electron">Electron (e⁻)</button>
+                <button class="btn" data-target="muon">Muon (μ⁻)</button>
+                <button class="btn" data-target="tau">Tau (τ⁻)</button>
+                <button class="btn" data-target="eneutrino">Electron Neutrino (νe)</button>
+
+                <div class="category-label">QUARKS (FERMIONS)</div>
+                <button class="btn" data-target="up">Up Quark (u)</button>
+                <button class="btn" data-target="down">Down Quark (d)</button>
+                <button class="btn" data-target="strange">Strange Quark (s)</button>
+                <button class="btn" data-target="top">Top Quark (t)</button>
+
+                <div class="category-label">COMPOSITES (HADRONS)</div>
+                <button class="btn" data-target="proton">Proton (p⁺) - uud</button>
+                <button class="btn" data-target="neutron">Neutron (n⁰) - udd</button>
+
+                <div class="category-label">BOSONS (FORCES)</div>
+                <button class="btn" data-target="photon">Photon (γ)</button>
+                <button class="btn" data-target="gluon">Gluon (g)</button>
+                <button class="btn" data-target="wboson">W Boson (W±)</button>
+                <button class="btn" data-target="zboson">Z Boson (Z⁰)</button>
+                <button class="btn" data-target="higgs">Higgs (H⁰)</button>
+                <button class="btn" data-target="graviton">Graviton (TT)</button>
+
+                <div class="category-label" style="color:var(--magenta); margin-top:15px;">FLUID ENVIRONMENT VARS</div>
+                <div class="slider-container">
+                    <div class="slider-label"><span>Reynolds Re (Dark Matter)</span><span class="slider-value" id="turb-readout">0.0 (Laminar)</span></div>
+                    <input type="range" id="turbulence-slider" min="0" max="100" value="0">
+                </div>
+                <div class="slider-container">
+                    <div class="slider-label"><span>Temp GeV (Symmetry)</span><span class="slider-value" id="temp-readout">0 GeV (Frozen)</span></div>
+                    <input type="range" id="temp-slider" min="0" max="300" value="0">
+                </div>
+            </div>
+        </div>
+
+        <!-- TELEMETRY PANEL -->
+        <div class="panel telemetry auto-collapse" id="telemetry-panel">
+            <div class="panel-header" id="telemetry-header"><span id="p-header-name"><span style="color:var(--cyan)">///</span> ELECTRON (e⁻)</span><span class="toggle-icon">−</span></div>
+            <div class="panel-content">
+                <div class="data-row"><span class="data-label">Winding (p, q):</span> <span class="data-value magenta" id="p-winding">p=2, q=3</span></div>
+                <div class="data-row"><span class="data-label">GTH Topology:</span> <span class="data-value cyan" id="p-topology">L-Chiral Trefoil (3_1)</span></div>
+                <div class="data-row"><span class="data-label">Acoustic Mass:</span> <span class="data-value" id="p-mass">0.511 MeV</span></div>
+                <div class="data-row"><span class="data-label">Charge / Writhe:</span> <span class="data-value" id="p-charge">-1e (w=3)</span></div>
+                <div class="data-row"><span class="data-label">Gravity Sink Pull:</span> <span class="data-value gold" id="p-grav">0.5 G</span></div>
+                
+                <div class="math-block" id="p-math" style="text-align:left; padding-left:15px;">
+                    <strong>[Master Curve]</strong><br>
+                    x(t) = R(t) * cos(p*t) * S(m)<br>
+                    <strong>[Charge Derivation]</strong><br>
+                    Q = -(e/6) * (w + r + 1)
+                </div>
+                <div class="description" id="p-desc">The topology dynamically emerges from the Master Fluid Equation. The parameters p=2 and q=3 force the fluid to twist into a stable Trefoil geometry.</div>
+                <div class="description" id="env-desc" style="border-top: 1px dashed var(--magenta); color: var(--magenta);">
+                    <strong>SYS MSG:</strong> Fluid Temperature is stable. Mass generates acoustic gravity sink.
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">[ TOUCH/DRAG: ROTATE | PINCH: ZOOM ] | Engineered by GTH_Systems</div>
+    </div>
+
+    <!-- UI Logic -->
+    <script>
+        const setupToggle = (headerId, panelId) => {
+            document.getElementById(headerId).addEventListener('click', function() {
+                const panel = document.getElementById(panelId);
+                panel.classList.remove('auto-collapse'); 
+                panel.classList.toggle('collapsed');
+                this.querySelector('.toggle-icon').innerText = panel.classList.contains('collapsed') ? '+' : '−';
+            });
+        };
+        setupToggle('controls-header', 'controls-panel');
+        setupToggle('telemetry-header', 'telemetry-panel');
+    </script>
+
+    <!-- WebGL Engine (Snapdragon Optimized & Math Scaled) -->
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+
+        let turbulenceFactor = 0; let temperatureFactor = 0; let activeTarget = 'electron';
+        let currentGravityPull = 0.5; 
+
+        // 1. Scene Setup
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene(); scene.fog = new THREE.FogExp2(0x020204, 0.010);
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 15, 60);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); 
+        container.appendChild(renderer.domElement);
+
+        const composer = new EffectComposer(renderer);
+        composer.addPass(new RenderPass(scene, camera));
+        const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.5, 0.85);
+        composer.addPass(bloomPass);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true; controls.dampingFactor = 0.05; controls.autoRotate = true; controls.autoRotateSpeed = 0.5;
+        controls.enablePan = false; 
+
+        scene.add(new THREE.AmbientLight(0x112233));
+        const pLight1 = new THREE.PointLight(0x00ffcc, 400, 100); pLight1.position.set(15, 15, 15); scene.add(pLight1);
+        const pLight2 = new THREE.PointLight(0xff00ff, 400, 100); pLight2.position.set(-15, -15, -15); scene.add(pLight2);
+
+        // 2. Condensate Flow Field (Gravity Vectors)
+        const flowCount = 1200; 
+        const flowGeometry = new THREE.CylinderGeometry(0.06, 0.06, 5, 4);
+        const flowMaterial = new THREE.MeshBasicMaterial({ color: 0x00aaff, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending });
+        const flowInstancedMesh = new THREE.InstancedMesh(flowGeometry, flowMaterial, flowCount);
+        
+        const flowPositions = new Float32Array(flowCount * 3);
+        const flowBaseSpeeds = new Float32Array(flowCount);
+        const flowRandoms = new Float32Array(flowCount); 
+        const dummy = new THREE.Object3D();
+
+        for (let i = 0; i < flowCount; i++) {
+            flowPositions[i*3] = (Math.random() - 0.5) * 200;
+            flowPositions[i*3+1] = (Math.random() - 0.5) * 100;
+            flowPositions[i*3+2] = (Math.random() - 0.5) * 200;
+            flowBaseSpeeds[i] = 0.1 + Math.random() * 0.25; 
+            flowRandoms[i] = Math.random() * Math.PI * 2;
+            dummy.position.set(flowPositions[i*3], flowPositions[i*3+1], flowPositions[i*3+2]); 
+            dummy.rotation.z = Math.PI / 2; dummy.updateMatrix(); flowInstancedMesh.setMatrixAt(i, dummy.matrix);
+        }
+        scene.add(flowInstancedMesh);
+
+        // 3. Parametric Generator (Mathematically Scaled)
+        class GeoKnotCurve extends THREE.Curve {
+            constructor(p, q, scale, type) { super(); this.p=p; this.q=q; this.scale=scale; this.type=type; }
+            getPoint(t, optionalTarget = new THREE.Vector3()) {
+                // MATH CALIBRATION: Quarks are open fractional filaments (phase angle 0.75).
+                // Composites are fully closed (phase angle 1.0) because Color Confinement forces loop closure.
+                let arc_t = (this.type === "quark") ? t * 0.75 : t;
+                arc_t *= Math.PI * 2; 
+
+                let x, y, z;
+                let effectiveQ = this.q;
+                if(this.type === "standard" || this.type === "quark" || this.type === "composite") {
+                     effectiveQ = this.q * (1.0 - temperatureFactor);
+                     if(effectiveQ < 0.1 && temperatureFactor > 0.8) effectiveQ = 0; 
+                }
+                
+                if (this.type === "standard" || this.type === "quark" || this.type === "composite") {
+                    const r = Math.cos(effectiveQ * arc_t) + 2; const tempScale = this.scale * (1.0 + (temperatureFactor * 2));
+                    x = r * Math.cos(this.p * arc_t) * tempScale; y = r * Math.sin(this.p * arc_t) * tempScale; z = -Math.sin(effectiveQ * arc_t) * tempScale * 1.5;
+                } else if (this.type === "photon") {
+                    x = (t - 0.5) * this.scale * 4 * Math.PI; y = Math.sin(t * Math.PI * this.p) * this.q; z = Math.cos(t * Math.PI * this.p) * this.q;
+                }
+                return optionalTarget.set(x, y, z);
+            }
+        }
+
+        let currentKnotGroup = new THREE.Group(); scene.add(currentKnotGroup);
+        const coreMat = new THREE.MeshPhysicalMaterial({ color: 0x00ffcc, emissive: 0x008866, emissiveIntensity: 1.5, roughness: 0.1, metalness: 0.8 });
+        const wireMat = new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.2, blending: THREE.AdditiveBlending });
+
+        function createEmergentMesh(geometry, colorHex, emissiveHex) {
+            const mat = coreMat.clone(); mat.color.setHex(colorHex); mat.emissive.setHex(emissiveHex);
+            const mesh = new THREE.Mesh(geometry, mat); mesh.add(new THREE.Mesh(geometry, wireMat)); return mesh;
+        }
+
+        function generateTopology(config) {
+            while(currentKnotGroup.children.length > 0){ const child = currentKnotGroup.children[0]; currentKnotGroup.remove(child); if(child.geometry) child.geometry.dispose(); }
+
+            if (config.type === "composite") {
+                // MATH CALIBRATION: The composite generator strictly uses the p/q of its constituent quarks
+                // Note we pass type: "composite" which forces arc_t to 1.0 (Color Confinement closes the loop)
+                const path1 = new GeoKnotCurve(config.p1, config.q1, 2.5, "composite"); const geo1 = new THREE.TubeGeometry(path1, 120, 1.2, 16, true);
+                const m1 = createEmergentMesh(geo1, config.c1, config.e1); m1.position.x = 2.5;
+                
+                const path2 = new GeoKnotCurve(config.p2, config.q2, 2.5, "composite"); const geo2 = new THREE.TubeGeometry(path2, 120, 1.2, 16, true);
+                const m2 = createEmergentMesh(geo2, config.c2, config.e2); m2.rotation.set(Math.PI/2, Math.PI/2, 0); m2.position.y = 2.5;
+                
+                const path3 = new GeoKnotCurve(config.p3, config.q3, 2.5, "composite"); const geo3 = new THREE.TubeGeometry(path3, 120, 1.2, 16, true);
+                const m3 = createEmergentMesh(geo3, config.c3, config.e3); m3.rotation.set(Math.PI/2, 0, Math.PI/2); m3.position.z = 2.5;
+                
+                const group = new THREE.Group(); group.add(m1, m2, m3); group.position.set(-0.8, -0.8, -0.8); currentKnotGroup.add(group);
+            } else if (config.type === "shear") {
+                const path = new GeoKnotCurve(1, 0, 8, "standard"); const geo = new THREE.TubeGeometry(path, 64, 2, 16, true);
+                const mesh = createEmergentMesh(geo, 0xaaaaaa, 0x333333); mesh.name = "shear_wave"; currentKnotGroup.add(mesh);
+            } else if (config.type === "scalar") {
+                const geo = new THREE.IcosahedronGeometry(6, 16); const mesh = createEmergentMesh(geo, 0xeeffff, 0x00ffff);
+                mesh.material.transparent = true; mesh.material.opacity = 0.8; currentKnotGroup.add(mesh);
+            } else {
+                const isClosed = config.type !== "quark";
+                const path = new GeoKnotCurve(config.p, config.q, config.scale || 3.5, config.type);
+                const geo = new THREE.TubeGeometry(path, 200, config.tube || 1.8, 20, isClosed);
+                const mesh = createEmergentMesh(geo, config.color, config.emissive); currentKnotGroup.add(mesh);
+            }
+            currentGravityPull = config.gravity; 
+        }
+
+        // --- THE RIGOROUS STANDARD MODEL DATA DICTIONARY ---
+        // Gravity (G) mathematically scaled to Rest Mass
+        // Charge rigorously validated via Q = -(e/6)*(w + r + 1)
+        const topologyData = {
+            // LEPTONS
+            "electron": { p: 2, q: 3, color: 0x00ffcc, emissive: 0x008866, gravity: 0.5, type: "standard", name: "Electron (e⁻)", top: "Trefoil (3_1)", mass: "0.511 MeV", charge: "-1e (w=3, r=2)", math: "p=2, q=3", desc: "Stable low-frequency Trefoil. Equation Q=-(1/6)*(3+2+1) yields exact -1 charge." },
+            "muon": { p: 3, q: 4, color: 0x0088ff, emissive: 0x0044aa, gravity: 2.2, type: "standard", name: "Muon (μ⁻)", top: "Gen 2 Knot (4_1)", mass: "105.6 MeV", charge: "-1e (w=4, r=1)", math: "p=3, q=4", desc: "Generation 2. The 105 MeV mass perfectly mirrors the extreme hydrodynamic bending energy required for higher p,q winding." },
+            "tau": { p: 4, q: 5, color: 0x5500ff, emissive: 0x3300aa, gravity: 8.0, type: "standard", name: "Tau (τ⁻)", top: "Gen 3 Knot (5_1)", mass: "1.77 GeV", charge: "-1e (w=5, r=0)", math: "p=4, q=5", desc: "Generation 3. Massive fluid tension generates 1.77 GeV rest mass before instability decay." },
+            "eneutrino": { p: 1, q: 0, color: 0x66ccff, emissive: 0x004488, tube: 0.8, gravity: 0.01, type: "standard", name: "Electron Neutrino", top: "Unknot (0_1)", mass: "< 1 eV", charge: "0 (w=-3, r=2)", math: "p=1, q=0", desc: "No longitudinal wrapping (q=0). Yields near-zero bending mass and perfectly balanced 0 charge." },
+
+            // QUARKS (OPEN TOPOLOGY)
+            "up": { p: -2, q: 3, color: 0xff3333, emissive: 0xaa0000, tube: 1.5, gravity: 0.7, type: "quark", name: "Up Quark (u)", top: "Open Fractional Braid", mass: "2.2 MeV", charge: "+2/3e (w=-3, r=-2)", math: "p=-2, q=3", desc: "Reversed chirality p=-2 maps to w=-3. Equation Q=-(1/6)*(-3-2+1) yields exact +2/3 charge. Open structure forces confinement." },
+            "down": { p: 2, q: 3, color: 0x33ff33, emissive: 0x00aa00, tube: 1.5, gravity: 0.9, type: "quark", name: "Down Quark (d)", top: "Open Fractional Node", mass: "4.7 MeV", charge: "-1/3e (w=3, r=-2)", math: "p=2, q=3", desc: "Standard chirality p=2 maps to w=3. Equation Q=-(1/6)*(3-2+1) yields exact -1/3 charge." },
+            "strange": { p: 3, q: 4, color: 0x00ccff, emissive: 0x0066aa, tube: 1.6, gravity: 2.0, type: "quark", name: "Strange Quark (s)", top: "Gen 2 Open Braid", mass: "96 MeV", charge: "-1/3e (w=4, r=-3)", math: "p=3, q=4", desc: "Generation 2 Down-type. High frequency open braid." },
+            "top": { p: -4, q: 7, color: 0xffffff, emissive: 0xff3300, tube: 2.5, gravity: 50.0, type: "quark", name: "Top Quark (t)", top: "Dense Gen 3 Open", mass: "172.7 GeV", charge: "+2/3e", math: "p=-4, q=7", desc: "HEAVIEST PARTICLE. Exerts massive 50.0 G acoustic gravity pull on the condensate before instantaneous decay." },
+
+            // COMPOSITES (CONFINED - PHASE ANGLE FORCED TO 1.0)
+            "proton": { type: "composite", p1:-2, q1:3, c1:0xff3333, e1:0xaa0000, p2:-2, q2:3, c2:0xff3333, e2:0xaa0000, p3:2, q3:3, c3:0x33ff33, e3:0x00aa00, gravity: 5.0, name: "Proton (p⁺)", top: "Borromean Link (uud)", mass: "938.2 MeV", charge: "+1e", math: "2(Up) + 1(Down)", desc: "Two left-chiral (Up) and one right-chiral (Down) vortices. Orthogonal packing tension generates the massive 938 MeV bulk mass." },
+            "neutron": { type: "composite", p1:-2, q1:3, c1:0xff3333, e1:0xaa0000, p2:2, q2:3, c2:0x33ff33, e2:0x00aa00, p3:2, q3:3, c3:0x33ff33, e3:0x00aa00, gravity: 5.1, name: "Neutron (n⁰)", top: "Borromean Link (udd)", mass: "939.5 MeV", charge: "0 (Canceled Flows)", math: "1(Up) + 2(Down)", desc: "One left-chiral and two right-chiral vortices perfectly cancel the electrostatic pressure gradient, yielding 0 net charge." },
+
+            // BOSONS
+            "photon": { type: "photon", p: 10, q: 4, scale: 5, color: 0xffcc00, emissive: 0x886600, tube: 0.8, gravity: 0.0, name: "Photon (γ)", top: "Helicity Wave", mass: "0", charge: "0", math: "Unspooled Limit Cycle", desc: "An unspooled transverse wave propagating without permanent volume displacement." },
+            "gluon": { p: 1, q: 1, scale: 5, color: 0xff0055, emissive: 0x880022, tube: 1.2, gravity: 0.0, type: "standard", name: "Gluon (g)", top: "Hopf Link Soliton", mass: "0", charge: "0", math: "p=1, q=1", desc: "Topological connective tissue required for quark loop closure (Color Force)." },
+            "wboson": { p: -3, q: 5, color: 0x00ff88, emissive: 0x00aa44, tube: 2.2, gravity: 25.0, type: "standard", name: "W Boson (W±)", top: "Chiral Ditrefoil", mass: "80.4 GeV", charge: "±1e", math: "p=-3, q=5", desc: "Dense transition knot carrying away charge topology during flavor changes. Huge gravity pull." },
+            "zboson": { p: 3, q: 5, color: 0xff00ff, emissive: 0x880088, tube: 2.2, gravity: 28.0, type: "standard", name: "Z Boson (Z⁰)", top: "Symmetric Ditrefoil", mass: "91.2 GeV", charge: "0", math: "p=3, q=5", desc: "Symmetric, hyper-dense fluid knot. Immense 91.2 GeV rest mass equivalent." },
+            "higgs": { type: "scalar", gravity: 35.0, name: "Higgs Boson (H⁰)", top: "Scalar Bubble", mass: "125.1 GeV", charge: "0", math: "p=0, q=0", desc: "Pure scalar radial cavitation. Exerts massive pulling force (35.0 G) without spin." },
+            "graviton": { type: "shear", gravity: 0.0, name: "Graviton (Phonon)", top: "Transverse-Traceless", mass: "0", charge: "0", math: "Vol(t) = Constant", desc: "Acoustic shear wave preserving volume perfectly while traversing the medium." }
+        };
+
+        // UI Binding - Buttons
+        document.querySelectorAll('.controls .btn').forEach(b => b.addEventListener('click', (e) => {
+            document.querySelectorAll('.controls .btn').forEach(btn => btn.classList.remove('active')); e.target.classList.add('active');
+            activeTarget = e.target.dataset.target; const data = topologyData[activeTarget]; generateTopology(data);
+            
+            document.getElementById('p-header-name').innerHTML = `<span style="color:var(--cyan)">///</span> ${data.name.toUpperCase()}`;
+            document.getElementById('p-winding').innerText = data.math.split(' ')[0] || `p=${data.p}, q=${data.q}`;
+            document.getElementById('p-topology').innerText = data.top; document.getElementById('p-mass').innerText = data.mass;
+            document.getElementById('p-charge').innerText = data.charge;
+            document.getElementById('p-grav').innerText = `${data.gravity.toFixed(1)} G`;
+            document.getElementById('p-math').innerHTML = `<strong>[Master Curve]</strong><br>x(t) = R(t) * cos(${data.p || 'p'}*t) * S(m)<br><strong>[Math]</strong><br>${data.math}`; 
+            document.getElementById('p-desc').innerText = data.desc;
+        }));
+
+        // UI Binding - Sliders
+        const turbSlider = document.getElementById('turbulence-slider'); const turbReadout = document.getElementById('turb-readout');
+        const tempSlider = document.getElementById('temp-slider'); const tempReadout = document.getElementById('temp-readout');
+        const envDesc = document.getElementById('env-desc');
+
+        turbSlider.addEventListener('input', (e) => {
+            turbulenceFactor = e.target.value / 100;
+            if(turbulenceFactor < 0.3) { turbReadout.innerText = `${e.target.value} (Laminar)`; turbReadout.className = "slider-value cyan"; }
+            else if (turbulenceFactor < 0.7) { turbReadout.innerText = `${e.target.value} (Transitional)`; turbReadout.className = "slider-value magenta"; }
+            else { turbReadout.innerText = `${e.target.value} (TURBULENT)`; turbReadout.className = "slider-value critical"; }
+        });
+
+        tempSlider.addEventListener('input', (e) => {
+            const gev = e.target.value; temperatureFactor = gev / 300;
+            if(topologyData[activeTarget].type !== 'photon' && topologyData[activeTarget].type !== 'shear' && topologyData[activeTarget].type !== 'scalar') { 
+                generateTopology(topologyData[activeTarget]); 
+            }
+
+            if(gev < 100) {
+                tempReadout.innerText = `${gev} GeV`; tempReadout.className = "slider-value cyan";
+                envDesc.innerHTML = "<strong>SYS MSG:</strong> Temp stable. Mass generates acoustic gravity sink."; envDesc.style.color = "var(--cyan)";
+            } else if (gev < 246) {
+                tempReadout.innerText = `${gev} GeV (Heating)`; tempReadout.className = "slider-value hot";
+                envDesc.innerHTML = "<strong>SYS MSG:</strong> Bindings loosening. Acoustic sink failing."; envDesc.style.color = "var(--hot)";
+            } else {
+                tempReadout.innerText = `${gev} GeV (MELTDOWN)`; tempReadout.className = "slider-value critical";
+                envDesc.innerHTML = "<strong>SYS MSG: [ SYMMETRY RESTORED ]</strong> Geometry unspooled. Acoustic sink = 0."; envDesc.style.color = "var(--danger)";
+                document.getElementById('p-mass').innerText = "0 (MELTED)"; document.getElementById('p-grav').innerText = "0.0 G";
+                currentGravityPull = 0.0; 
+            }
+        });
+
+        generateTopology(topologyData['electron']);
+
+        // 4. Render Loop (Rigorous Acoustic Sink)
+        function animate() {
+            requestAnimationFrame(animate);
+            const t = clock.getElapsedTime(); controls.update();
+
+            if(currentKnotGroup.children.length > 0) {
+                currentKnotGroup.children.forEach(mesh => {
+                    if(mesh.type === "Mesh" || mesh.type === "Group") {
+                        mesh.rotation.y += 0.01;
+                        if(mesh.name === "shear_wave") {
+                            const strain = 0.4 * Math.sin(t * 6.0); mesh.scale.set(1.0 + strain, 1.0 / (1.0 + strain), 1.0);
+                        }
+                    }
+                });
+            }
+
+            for (let i = 0; i < flowCount; i++) {
+                const speed = flowBaseSpeeds[i] * (1 + (turbulenceFactor * 5));
+                let px = flowPositions[i*3]; let py = flowPositions[i*3+1]; let pz = flowPositions[i*3+2];
+                
+                px += speed; 
+
+                // THE ACOUSTIC GRAVITY SINK (Mapped mathematically to Rest Mass parameter)
+                const distSq = (px*px) + (py*py) + (pz*pz);
+                if (distSq > 10.0 && currentGravityPull > 0) {
+                    // Logarithmic visual multiplier for extreme masses like Top Quark
+                    const pull = (currentGravityPull * 2.8) / Math.sqrt(distSq); 
+                    px -= (px / distSq) * pull * 60; 
+                    py -= (py / distSq) * pull * 60;
+                    pz -= (pz / distSq) * pull * 60;
+                }
+
+                if (px > 100) px = -100;
+
+                const chaosY = Math.cos(t * 5.0 + flowRandoms[i]) * 10 * turbulenceFactor;
+                const chaosZ = Math.sin(t * 3.0 + px*0.1) * 10 * turbulenceFactor;
+                const boilY = Math.sin(t * 15.0 + flowRandoms[i]) * 2 * temperatureFactor;
+                const waveY = Math.sin(px * 0.05 + t) * 2;
+                
+                dummy.position.set(px, py + waveY + chaosY + boilY, pz + chaosZ);
+                
+                if (currentGravityPull > 5.0 && distSq < 1500) {
+                    dummy.lookAt(0,0,0); dummy.rotateY(Math.PI / 2); 
+                } else {
+                    dummy.rotation.set(chaosZ * 0.1, 0, (Math.PI / 2) + (chaosY * 0.2)); 
+                }
+
+                dummy.updateMatrix(); flowInstancedMesh.setMatrixAt(i, dummy.matrix);
+                flowPositions[i*3] = px; flowPositions[i*3+1] = py; flowPositions[i*3+2] = pz;
+            }
+            flowInstancedMesh.instanceMatrix.needsUpdate = true;
+            composer.render();
+        }
+        
+        const clock = new THREE.Clock(); animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight); composer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
